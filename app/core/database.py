@@ -116,6 +116,27 @@ def drop_tables():
         raise
 
 
+def test_connection():
+    """
+    Probar conexión a la base de datos
+    """
+    if not engine:
+        logger.error("❌ Engine no configurado")
+        return False
+
+    try:
+        with engine.connect() as conn:
+            # Usar text() para consultas SQL raw
+            from sqlalchemy import text
+            result = conn.execute(text("SELECT 1"))
+            result.fetchone()
+        logger.info("✅ Conexión a MySQL exitosa")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error de conexión a MySQL: {e}")
+        return False
+
+
 def get_db_info():
     """
     Obtener información de la base de datos
@@ -125,10 +146,12 @@ def get_db_info():
 
     try:
         with engine.connect() as conn:
-            result = conn.execute("SELECT VERSION()")
+            from sqlalchemy import text
+
+            result = conn.execute(text("SELECT VERSION()"))
             version = result.fetchone()[0]
 
-            result = conn.execute("SELECT DATABASE()")
+            result = conn.execute(text("SELECT DATABASE()"))
             database = result.fetchone()[0]
 
             return {
@@ -141,21 +164,3 @@ def get_db_info():
     except Exception as e:
         logger.error(f"Error al obtener info de DB: {e}")
         return None
-
-
-def test_connection():
-    """
-    Probar conexión a la base de datos
-    """
-    if not engine:
-        logger.error("❌ Engine no configurado")
-        return False
-
-    try:
-        with engine.connect() as conn:
-            conn.execute("SELECT 1")
-        logger.info("✅ Conexión a MySQL exitosa")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Error de conexión a MySQL: {e}")
-        return False
