@@ -12,7 +12,7 @@ alembic==1.13.1
 # Autenticación y seguridad
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-cryptography==41.0.8
+cryptography>=41.0.0,<46.0.0
 
 # Validación y configuración
 pydantic==2.5.0
