@@ -106,37 +106,26 @@ chown -R ${APP_USER}:${APP_USER} ${APP_DIR}/app
 # 6. Crear archivo .env
 log_info "Creando configuración..."
 cat > ${APP_DIR}/.env << EOF
-# PillCare 360 - Configuración de Producción
-PROJECT_NAME="PillCare 360 API"
+PROJECT_NAME=PillCare_360_API
 ENVIRONMENT=production
 DEBUG=false
 HOST=0.0.0.0
 PORT=8000
-
-# Seguridad
-SECRET_KEY=$(openssl rand -base64 64)
+SECRET_KEY=$(openssl rand -base64 64 | tr -d '\n')
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Base de datos MySQL
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 DB_CHARSET=utf8mb4
-
-# Email (configurar después)
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USER=
 EMAIL_PASSWORD=
 FROM_EMAIL=noreply@pillcare360.com
-
-# CORS - Ajustar según tu frontend
 CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","https://tudominio.com"]
-
-# Configuraciones adicionales
 UPLOAD_FOLDER=${APP_DIR}/uploads
 REPORTS_FOLDER=${APP_DIR}/reports
 LOG_LEVEL=INFO
@@ -178,9 +167,17 @@ fi
 # 9. Probar conexión y crear tablas
 log_info "Configurando base de datos..."
 cd ${APP_DIR}/app
-sudo -u ${APP_USER} env $(cat ${APP_DIR}/.env | grep -v '^#' | xargs) "${VENV_DIR}/bin/python" -c "
+
+# Crear script temporal para probar la base de datos
+cat > /tmp/test_db.py << 'EOF'
 import sys
+import os
 sys.path.append('.')
+
+# Cargar variables de entorno desde .env
+from dotenv import load_dotenv
+load_dotenv('/opt/pillcare360/.env')
+
 try:
     from app.core.database import create_tables, test_connection
     print('🔗 Probando conexión a MySQL...')
@@ -197,7 +194,13 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     sys.exit(1)
-"
+EOF
+
+# Ejecutar el script
+sudo -u ${APP_USER} "${VENV_DIR}/bin/python" /tmp/test_db.py
+
+# Limpiar script temporal
+rm -f /tmp/test_db.py
 
 # 10. Crear servicio systemd
 log_info "Configurando servicio systemd..."
