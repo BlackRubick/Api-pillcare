@@ -1,19 +1,21 @@
 #!/bin/bash
 
-# Script de despliegue para PillCare 360 desde repositorio clonado
-# Ejecutar desde: sudo bash /opt/pillcare360/app/deployment/deploy.sh
+# Script para desplegar PillCare 360 desde /home/ubuntu/Api-pillcare
+# Ejecutar como: sudo bash deploy_existing.sh
 
 set -e
 
-echo "🚀 Desplegando PillCare 360 desde repositorio"
-echo "============================================="
+echo "🚀 Desplegando PillCare 360 desde /home/ubuntu/Api-pillcare"
+echo "=========================================================="
 
 # Variables
+SOURCE_DIR="/home/ubuntu/Api-pillcare"
 APP_USER="pillcare360"
 APP_DIR="/opt/pillcare360"
-REPO_DIR="${APP_DIR}/app"
 VENV_DIR="${APP_DIR}/venv"
 SERVICE_NAME="pillcare360"
+DB_NAME="pillcare360"
+DB_USER="pillcare360_user"
 
 # Colores
 GREEN='\033[0;32m'
@@ -27,31 +29,124 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Verificar root
 if [[ $EUID -ne 0 ]]; then
-   log_error "Ejecutar como root: sudo bash deploy.sh"
+   log_error "Ejecutar como root: sudo bash deploy_existing.sh"
    exit 1
 fi
 
-# Verificar que existe el repositorio clonado
-if [ ! -d "${REPO_DIR}" ] || [ ! -f "${REPO_DIR}/app/main.py" ]; then
-    log_error "No se encontró el código clonado en ${REPO_DIR}"
-    log_error "Primero clona tu repositorio:"
-    log_error "cd ${APP_DIR} && sudo -u ${APP_USER} git clone TU_REPO app"
+# Verificar que existe el código fuente
+if [ ! -d "${SOURCE_DIR}" ] || [ ! -f "${SOURCE_DIR}/app/main.py" ]; then
+    log_error "No se encontró el código en ${SOURCE_DIR} o falta app/main.py"
     exit 1
 fi
 
-log_info "Código fuente encontrado en ${REPO_DIR}"
+log_info "✅ Código fuente encontrado en ${SOURCE_DIR}"
 
-# 1. Detener servicios existentes
-log_info "Deteniendo servicios..."
-systemctl stop ${SERVICE_NAME} 2>/dev/null || true
+# 1. Instalar dependencias del sistema si no están
+log_info "Verificando dependencias del sistema..."
+apt update
+apt install -y \
+    python3.11 python3.11-dev python3.11-venv python3-pip \
+    mysql-server nginx supervisor git curl
 
-# 2. Actualizar repositorio
-log_info "Actualizando código desde repositorio..."
-cd ${REPO_DIR}
-sudo -u ${APP_USER} git pull origin main || sudo -u ${APP_USER} git pull origin master
+# 2. Configurar MySQL si no está configurado
+log_info "Configurando MySQL..."
+systemctl start mysql
+systemctl enable mysql
 
-# 3. Crear/actualizar entorno virtual
-log_info "Configurando entorno virtual..."
+# Generar contraseñas si no existen
+if [ ! -f "/opt/mysql_credentials.txt" ]; then
+    DB_ROOT_PASSWORD=$(openssl rand -base64 32)
+    DB_PASSWORD=$(openssl rand -base64 32)
+
+    # Configurar MySQL
+    mysql --execute="ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}';" 2>/dev/null || true
+    mysql -u root -p"${DB_ROOT_PASSWORD}" --execute="
+    CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+    GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
+    FLUSH PRIVILEGES;
+    " 2>/dev/null || {
+        # Si falla, asumir que MySQL no tiene contraseña aún
+        DB_ROOT_PASSWORD=$(openssl rand -base64 32)
+        DB_PASSWORD=$(openssl rand -base64 32)
+
+        mysql --execute="ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}';"
+        mysql -u root -p"${DB_ROOT_PASSWORD}" --execute="
+        CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+        GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
+        FLUSH PRIVILEGES;
+        "
+    }
+
+    # Guardar credenciales
+    echo "DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}" > /opt/mysql_credentials.txt
+    echo "DB_PASSWORD=${DB_PASSWORD}" >> /opt/mysql_credentials.txt
+    chmod 600 /opt/mysql_credentials.txt
+
+    log_info "✅ MySQL configurado con nuevas credenciales"
+else
+    log_info "✅ MySQL ya configurado, leyendo credenciales..."
+    source /opt/mysql_credentials.txt
+fi
+
+# 3. Crear usuario de aplicación
+log_info "Creando usuario de aplicación..."
+useradd --system --shell /bin/bash --home-dir ${APP_DIR} --create-home ${APP_USER} 2>/dev/null || true
+
+# 4. Crear estructura de directorios
+mkdir -p ${APP_DIR}/{logs,backups,uploads,reports,app}
+
+# 5. Copiar código fuente
+log_info "Copiando código fuente..."
+rsync -av --delete ${SOURCE_DIR}/ ${APP_DIR}/app/
+chown -R ${APP_USER}:${APP_USER} ${APP_DIR}/app
+
+# 6. Crear archivo .env
+log_info "Creando configuración..."
+cat > ${APP_DIR}/.env << EOF
+# PillCare 360 - Configuración de Producción
+PROJECT_NAME="PillCare 360 API"
+ENVIRONMENT=production
+DEBUG=false
+HOST=0.0.0.0
+PORT=8000
+
+# Seguridad
+SECRET_KEY=$(openssl rand -base64 64)
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Base de datos MySQL
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=${DB_NAME}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+DB_CHARSET=utf8mb4
+
+# Email (configurar después)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=
+EMAIL_PASSWORD=
+FROM_EMAIL=noreply@pillcare360.com
+
+# CORS - Ajustar según tu frontend
+CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","https://tudominio.com"]
+
+# Configuraciones adicionales
+UPLOAD_FOLDER=${APP_DIR}/uploads
+REPORTS_FOLDER=${APP_DIR}/reports
+LOG_LEVEL=INFO
+DEFAULT_TIMEZONE=America/Mexico_City
+EOF
+
+# Enlazar .env al directorio de la app
+ln -sf ${APP_DIR}/.env ${APP_DIR}/app/.env
+
+# 7. Crear y configurar entorno virtual
+log_info "Configurando entorno virtual de Python..."
 if [ -d "${VENV_DIR}" ]; then
     rm -rf "${VENV_DIR}"
 fi
@@ -59,28 +154,29 @@ fi
 sudo -u ${APP_USER} python3.11 -m venv "${VENV_DIR}"
 sudo -u ${APP_USER} "${VENV_DIR}/bin/pip" install --upgrade pip
 
-# 4. Instalar dependencias
-log_info "Instalando dependencias..."
-if [ -f "${REPO_DIR}/requirements.txt" ]; then
-    sudo -u ${APP_USER} "${VENV_DIR}/bin/pip" install -r "${REPO_DIR}/requirements.txt"
-elif [ -f "${REPO_DIR}/pyproject.toml" ]; then
-    sudo -u ${APP_USER} "${VENV_DIR}/bin/pip" install -e "${REPO_DIR}"
+# 8. Instalar dependencias de Python
+log_info "Instalando dependencias de Python..."
+if [ -f "${APP_DIR}/app/requirements.txt" ]; then
+    sudo -u ${APP_USER} "${VENV_DIR}/bin/pip" install -r "${APP_DIR}/app/requirements.txt"
 else
     log_warn "No se encontró requirements.txt, instalando dependencias básicas..."
     sudo -u ${APP_USER} "${VENV_DIR}/bin/pip" install \
-        fastapi uvicorn sqlalchemy pymysql python-jose passlib \
-        python-multipart pydantic pydantic-settings python-dotenv
+        fastapi==0.104.1 \
+        uvicorn[standard]==0.24.0 \
+        sqlalchemy==2.0.23 \
+        pymysql==1.1.0 \
+        python-jose[cryptography]==3.3.0 \
+        passlib[bcrypt]==1.7.4 \
+        python-multipart==0.0.6 \
+        pydantic==2.5.0 \
+        pydantic-settings==2.1.0 \
+        python-dotenv==1.0.0 \
+        email-validator==2.1.0
 fi
 
-# 5. Crear enlaces simbólicos para configuración
-log_info "Configurando archivos de configuración..."
-if [ ! -f "${REPO_DIR}/.env" ]; then
-    ln -sf "${APP_DIR}/.env" "${REPO_DIR}/.env"
-fi
-
-# 6. Crear/migrar base de datos
+# 9. Probar conexión y crear tablas
 log_info "Configurando base de datos..."
-cd ${REPO_DIR}
+cd ${APP_DIR}/app
 sudo -u ${APP_USER} env $(cat ${APP_DIR}/.env | grep -v '^#' | xargs) "${VENV_DIR}/bin/python" -c "
 import sys
 sys.path.append('.')
@@ -97,10 +193,12 @@ try:
         sys.exit(1)
 except Exception as e:
     print(f'❌ Error: {e}')
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 "
 
-# 7. Crear servicio systemd
+# 10. Crear servicio systemd
 log_info "Configurando servicio systemd..."
 cat > /etc/systemd/system/${SERVICE_NAME}.service << EOF
 [Unit]
@@ -112,7 +210,7 @@ Requires=mysql.service
 Type=exec
 User=${APP_USER}
 Group=${APP_USER}
-WorkingDirectory=${REPO_DIR}
+WorkingDirectory=${APP_DIR}/app
 Environment=PATH=${VENV_DIR}/bin
 EnvironmentFile=${APP_DIR}/.env
 ExecStart=${VENV_DIR}/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
@@ -128,7 +226,7 @@ StandardError=append:${APP_DIR}/logs/error.log
 WantedBy=multi-user.target
 EOF
 
-# 8. Configurar Nginx
+# 11. Configurar Nginx
 log_info "Configurando Nginx..."
 cat > /etc/nginx/sites-available/pillcare360 << 'EOF'
 server {
@@ -149,7 +247,11 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # CORS
+        # CORS Headers
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+
         if ($request_method = 'OPTIONS') {
             add_header 'Access-Control-Allow-Origin' '*';
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
@@ -160,67 +262,69 @@ server {
             return 204;
         }
     }
-
-    # Archivos estáticos
-    location /static/ {
-        alias /opt/pillcare360/static/;
-        expires 30d;
-    }
 }
 EOF
 
-# Activar sitio
+# Activar sitio de Nginx
 ln -sf /etc/nginx/sites-available/pillcare360 /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 
-# 9. Configurar permisos
-log_info "Ajustando permisos..."
+# 12. Configurar firewall
+log_info "Configurando firewall..."
+ufw --force enable || true
+ufw allow 22    # SSH
+ufw allow 80    # HTTP
+ufw allow 443   # HTTPS
+ufw allow 8000  # API directo (temporal)
+
+# 13. Ajustar permisos finales
 chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 chmod 600 ${APP_DIR}/.env
 
-# 10. Crear script de actualización
-cat > ${APP_DIR}/update.sh << 'EOF'
+# 14. Crear script de actualización
+cat > ${APP_DIR}/update.sh << EOF
 #!/bin/bash
-# Script para actualizar PillCare 360
-
 echo "🔄 Actualizando PillCare 360..."
 
-# Ir al directorio del repo
-cd /opt/pillcare360/app
+# Sincronizar código desde el directorio original
+rsync -av --delete ${SOURCE_DIR}/ ${APP_DIR}/app/
+chown -R ${APP_USER}:${APP_USER} ${APP_DIR}/app
 
-# Hacer pull del código
-sudo -u pillcare360 git pull
+# Reinstalar dependencias si cambió requirements.txt
+if [ ${SOURCE_DIR}/requirements.txt -nt ${VENV_DIR}/pyvenv.cfg ]; then
+    echo "📦 Actualizando dependencias..."
+    sudo -u ${APP_USER} ${VENV_DIR}/bin/pip install -r ${APP_DIR}/app/requirements.txt
+fi
 
-# Reiniciar el servicio
-sudo systemctl restart pillcare360
+# Reiniciar servicio
+systemctl restart ${SERVICE_NAME}
 
 echo "✅ Actualización completada"
-sudo systemctl status pillcare360
+systemctl status ${SERVICE_NAME}
 EOF
 
 chmod +x ${APP_DIR}/update.sh
 
-# 11. Iniciar servicios
+# 15. Iniciar servicios
 log_info "Iniciando servicios..."
 systemctl daemon-reload
 systemctl enable ${SERVICE_NAME}
 systemctl start ${SERVICE_NAME}
 systemctl reload nginx
 
-# 12. Verificar que todo funcione
+# 16. Verificar servicios
 sleep 5
 
 echo ""
 echo "🔍 VERIFICANDO SERVICIOS:"
 echo "========================"
 
-# Verificar servicios
 if systemctl is-active --quiet ${SERVICE_NAME}; then
     log_info "✅ PillCare 360: CORRIENDO"
 else
     log_error "❌ PillCare 360: FALLÓ"
-    echo "Ver logs: sudo journalctl -u ${SERVICE_NAME} -n 50"
+    echo "Ver logs: sudo journalctl -u ${SERVICE_NAME} -n 20"
 fi
 
 if systemctl is-active --quiet nginx; then
@@ -239,12 +343,12 @@ fi
 log_info "Probando API..."
 sleep 3
 if curl -f -s http://localhost:8000/health > /dev/null; then
-    log_info "✅ API respondiendo en puerto 8000"
+    log_info "✅ API respondiendo correctamente"
 else
-    log_warn "⚠️ API no responde - revisar logs"
+    log_warn "⚠️ API no responde - verificar logs"
 fi
 
-# 13. Información final
+# 17. Información final
 echo ""
 echo "🎉 ¡DESPLIEGUE COMPLETADO!"
 echo "========================"
@@ -256,15 +360,23 @@ echo "   http://${PUBLIC_IP}/docs"
 echo "   http://${PUBLIC_IP}/health"
 echo ""
 echo "📋 COMANDOS ÚTILES:"
-echo "   Actualizar código:    sudo ${APP_DIR}/update.sh"
-echo "   Ver logs:             sudo tail -f ${APP_DIR}/logs/app.log"
-echo "   Ver errores:          sudo tail -f ${APP_DIR}/logs/error.log"
-echo "   Reiniciar app:        sudo systemctl restart ${SERVICE_NAME}"
-echo "   Estado de servicios:  sudo systemctl status ${SERVICE_NAME}"
+echo "   Actualizar desde ${SOURCE_DIR}:  sudo ${APP_DIR}/update.sh"
+echo "   Ver logs:                        sudo tail -f ${APP_DIR}/logs/app.log"
+echo "   Ver errores:                     sudo tail -f ${APP_DIR}/logs/error.log"
+echo "   Reiniciar app:                   sudo systemctl restart ${SERVICE_NAME}"
+echo "   Estado:                          sudo systemctl status ${SERVICE_NAME}"
 echo ""
-echo "🔧 ARCHIVOS IMPORTANTES:"
-echo "   Código:      ${REPO_DIR}/"
-echo "   Config:      ${APP_DIR}/.env"
-echo "   Logs:        ${APP_DIR}/logs/"
-echo "   Actualizar:  ${APP_DIR}/update.sh"
+echo "🔐 CREDENCIALES MySQL (guardadas en /opt/mysql_credentials.txt):"
+echo "   Root: ${DB_ROOT_PASSWORD}"
+echo "   App:  ${DB_PASSWORD}"
+echo ""
+echo "📁 ESTRUCTURA:"
+echo "   Código fuente: ${SOURCE_DIR}/ (tu ubicación original)"
+echo "   App en producción: ${APP_DIR}/app/"
+echo "   Configuración: ${APP_DIR}/.env"
+echo "   Logs: ${APP_DIR}/logs/"
+echo ""
+echo "💡 PARA ACTUALIZAR:"
+echo "   1. Haz cambios en ${SOURCE_DIR}/"
+echo "   2. Ejecuta: sudo ${APP_DIR}/update.sh"
 echo ""
