@@ -128,8 +128,8 @@ def setup_middlewares(app: FastAPI):
             # Producción - IP específica
             "http://18.234.171.119",
             "https://18.234.171.119",
-            "http://54.172.177.66",
-            "https://54.172.177.66",
+            "http://34.195.77.140",
+            "https://34.195.77.140",
             "*"
         ],
         "allow_credentials": True,
