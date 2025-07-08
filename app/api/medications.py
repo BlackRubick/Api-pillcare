@@ -302,3 +302,14 @@ async def get_medication_usage_stats(
     )
 
     return stats
+
+
+@router.get("/api/medications/")
+def get_medications(db: Session = Depends(get_db)):
+    try:
+        meds = db.query(Medication).order_by(Medication.name).limit(100).all()
+        return meds
+    except Exception as e:
+        # Aquí imprime el error en consola y lanza HTTP 500 con detalle
+        print("ERROR fetching medications:", e)
+        raise HTTPException(status_code=500, detail=str(e))

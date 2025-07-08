@@ -113,19 +113,37 @@ API REST para la gestión inteligente de medicamentos y tratamientos médicos.
 def setup_middlewares(app: FastAPI):
     """Configurar middlewares de la aplicación"""
 
-    # CORS - Configuración para desarrollo y producción
-    cors_config = {
-        "allow_origins": settings.CORS_ORIGINS,
-        "allow_credentials": True,
-        "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-        "allow_headers": ["*"],
-        "expose_headers": ["*"]
-    }
-
+    # CORS - Configuración corregida para desarrollo y producción
     if settings.DEBUG:
-        # En desarrollo, permitir más orígenes
-        cors_config["allow_origins"] = ["*"]
-        cors_config["allow_credentials"] = False
+        # En desarrollo, especificar orígenes específicos para permitir credentials
+        cors_config = {
+            "allow_origins": [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:5174",
+                "http://127.0.0.1:5174",
+                "http://localhost:4173",
+                "http://127.0.0.1:4173"
+            ],
+            "allow_credentials": True,
+            "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+            "allow_headers": ["*"],
+            "expose_headers": ["*"]
+        }
+        logger.info("🔧 CORS configurado para desarrollo")
+        logger.info(f"🌐 Orígenes permitidos: {cors_config['allow_origins']}")
+    else:
+        # Producción - usar configuración de settings
+        cors_config = {
+            "allow_origins": settings.CORS_ORIGINS,
+            "allow_credentials": True,
+            "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+            "allow_headers": ["*"],
+            "expose_headers": ["*"]
+        }
+        logger.info("🔒 CORS configurado para producción")
 
     app.add_middleware(CORSMiddleware, **cors_config)
 
@@ -135,6 +153,7 @@ def setup_middlewares(app: FastAPI):
             TrustedHostMiddleware,
             allowed_hosts=["*.pillcare360.com", "pillcare360.com", "localhost"]
         )
+        logger.info("🛡️ TrustedHost middleware configurado")
 
 
 def setup_routes(app: FastAPI):
@@ -178,11 +197,19 @@ def setup_routes(app: FastAPI):
 
         return health_status
 
+    # CORS preflight para todas las rutas de la API
+    @app.options("/api/{path:path}")
+    async def options_handler():
+        """Manejo explícito de preflight CORS para todas las rutas de la API"""
+        return {"message": "OK"}
+
     # Incluir router principal de la API
     app.include_router(
         api_router,
         prefix="/api"
     )
+
+    logger.info("🛣️ Rutas configuradas correctamente")
 
 
 # Crear la aplicación
@@ -206,7 +233,7 @@ if __name__ == "__main__":
     logger.info("🚀 Iniciando servidor de desarrollo...")
     logger.info(f"🌐 URL: http://{settings.HOST}:{settings.PORT}")
     logger.info(f"📚 Docs: http://{settings.HOST}:{settings.PORT}/docs")
-    logger.info(f"🔍 Redoc: http://{settings.HOST}:{settings.PORT}/redoc")
-    logger.info(f"💡 Health: http://{settings.HOST}:{settings.PORT}/health")
+    logger.info(f"📖 Redoc: http://{settings.HOST}:{settings.PORT}/redoc")
+    logger.info(f"❤️ Health: http://{settings.HOST}:{settings.PORT}/health")
 
     uvicorn.run(**uvicorn_config)

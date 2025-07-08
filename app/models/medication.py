@@ -10,13 +10,13 @@ from app.core.database import Base
 
 
 class MedicationUnit(str, enum.Enum):
-    """Unidades de medicamento"""
-    MG = "mg"
-    ML = "ml"
-    TABLETS = "tablets"
-    CAPSULES = "capsules"
-    DROPS = "drops"
-    PATCHES = "patches"
+    mg = "mg"
+    ml = "ml"
+    tablets = "tablets"
+    capsules = "capsules"
+    drops = "drops"
+    patches = "patches"
+
 
 
 class Medication(Base):
