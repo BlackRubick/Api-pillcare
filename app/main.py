@@ -91,13 +91,13 @@ API REST para la gestión inteligente de medicamentos y tratamientos médicos.
         "lifespan": lifespan,
     }
 
-    # En producción, ocultar documentación
-    if settings.is_production:
-        app_config.update({
-            "docs_url": None,
-            "redoc_url": None,
-            "openapi_url": None
-        })
+    # En producción, mantener docs disponibles pero solo para debugging
+    # if settings.is_production:
+    #     app_config.update({
+    #         "docs_url": None,
+    #         "redoc_url": None,
+    #         "openapi_url": None
+    #     })
 
     app = FastAPI(**app_config)
 
@@ -113,45 +113,63 @@ API REST para la gestión inteligente de medicamentos y tratamientos médicos.
 def setup_middlewares(app: FastAPI):
     """Configurar middlewares de la aplicación"""
 
-    # CORS - Configuración corregida para desarrollo y producción
-    if settings.DEBUG:
-        # En desarrollo, especificar orígenes específicos para permitir credentials
-        cors_config = {
-            "allow_origins": [
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:5174",
-                "http://127.0.0.1:5174",
-                "http://localhost:4173",
-                "http://127.0.0.1:4173"
-            ],
-            "allow_credentials": True,
-            "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-            "allow_headers": ["*"],
-            "expose_headers": ["*"]
-        }
-        logger.info("🔧 CORS configurado para desarrollo")
-        logger.info(f"🌐 Orígenes permitidos: {cors_config['allow_origins']}")
-    else:
-        # Producción - usar configuración de settings
-        cors_config = {
-            "allow_origins": settings.CORS_ORIGINS,
-            "allow_credentials": True,
-            "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-            "allow_headers": ["*"],
-            "expose_headers": ["*"]
-        }
-        logger.info("🔒 CORS configurado para producción")
+    # CORS - Configuración universal que funciona en desarrollo y producción
+    cors_config = {
+        "allow_origins": [
+            # Desarrollo local
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+            "http://localhost:4173",
+            "http://127.0.0.1:4173",
+            # Producción - IP específica
+            "http://18.234.171.119",
+            "https://18.234.171.119",
+            # Permitir cualquier origen para pruebas (cambiar después)
+            "*"
+        ],
+        "allow_credentials": True,
+        "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        "allow_headers": ["*"],
+        "expose_headers": ["*"]
+    }
+
+    # Si está en settings.CORS_ORIGINS, usar esos también
+    if hasattr(settings, 'CORS_ORIGINS') and settings.CORS_ORIGINS:
+        try:
+            # CORS_ORIGINS puede ser string o list
+            if isinstance(settings.CORS_ORIGINS, str):
+                import json
+                additional_origins = json.loads(settings.CORS_ORIGINS)
+            else:
+                additional_origins = settings.CORS_ORIGINS
+
+            # Combinar orígenes sin duplicados
+            all_origins = list(set(cors_config["allow_origins"] + additional_origins))
+            cors_config["allow_origins"] = all_origins
+        except Exception as e:
+            logger.warning(f"Error procesando CORS_ORIGINS: {e}")
+
+    logger.info("🔧 CORS configurado")
+    logger.info(f"🌐 Orígenes permitidos: {cors_config['allow_origins']}")
 
     app.add_middleware(CORSMiddleware, **cors_config)
 
-    # Trusted hosts middleware (solo en producción)
+    # Trusted hosts middleware - más permisivo en producción para debugging
     if settings.is_production:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["*.pillcare360.com", "pillcare360.com", "localhost"]
+            allowed_hosts=[
+                "*.pillcare360.com",
+                "pillcare360.com",
+                "localhost",
+                "127.0.0.1",
+                "18.234.171.119",  # Tu IP específica
+                "*"  # Temporalmente permisivo para debugging
+            ]
         )
         logger.info("🛡️ TrustedHost middleware configurado")
 
@@ -166,7 +184,7 @@ def setup_routes(app: FastAPI):
             "message": "🏥 PillCare 360 API",
             "version": "1.0.0",
             "environment": settings.ENVIRONMENT,
-            "documentation": "/docs" if not settings.is_production else "Contact support for API documentation",
+            "documentation": "/docs",  # Siempre disponible
             "health": "/health",
             "api": "/api"
         }
