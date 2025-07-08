@@ -45,8 +45,9 @@ log_info "✅ Código fuente encontrado en ${SOURCE_DIR}"
 log_info "Verificando dependencias del sistema..."
 apt update
 apt install -y \
-    python3.11 python3.11-dev python3.11-venv python3-pip \
-    mysql-server nginx supervisor git curl
+    python3 python3-dev python3-venv python3-pip \
+    mysql-server nginx supervisor git curl build-essential \
+    pkg-config default-libmysqlclient-dev
 
 # 2. Configurar MySQL si no está configurado
 log_info "Configurando MySQL..."
@@ -151,7 +152,7 @@ if [ -d "${VENV_DIR}" ]; then
     rm -rf "${VENV_DIR}"
 fi
 
-sudo -u ${APP_USER} python3.11 -m venv "${VENV_DIR}"
+sudo -u ${APP_USER} python3 -m venv "${VENV_DIR}"
 sudo -u ${APP_USER} "${VENV_DIR}/bin/pip" install --upgrade pip
 
 # 8. Instalar dependencias de Python
