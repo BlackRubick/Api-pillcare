@@ -128,7 +128,8 @@ def setup_middlewares(app: FastAPI):
             # Producción - IP específica
             "http://18.234.171.119",
             "https://18.234.171.119",
-            # Permitir cualquier origen para pruebas (cambiar después)
+            "http://54.172.177.66",
+            "https://54.172.177.66",
             "*"
         ],
         "allow_credentials": True,
