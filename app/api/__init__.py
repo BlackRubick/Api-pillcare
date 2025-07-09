@@ -5,15 +5,23 @@ from fastapi import APIRouter, Depends
 from app.core.dependencies import get_current_user
 from app.models.user import User
 
-# Importar solo los routers que YA EXISTEN y están completos
+# Importar todos los routers
 from . import auth, patients, medications, treatments
-
-# TODO: Importar cuando estén implementados
-# from . import alarms, alerts, monitoring, reports, settings
+# Crear el archivo alarms.py con el código que te proporcioné
+from . import alarms  # AGREGAR ESTA LÍNEA
 
 # Router principal de la API
 api_router = APIRouter()
 
+from . import auth, patients, medications, treatments, alarms
+
+# Agregar después de los otros routers:
+api_router.include_router(
+    alarms.router,
+    prefix="",
+    tags=["alarms"],
+    dependencies=[Depends(get_current_user)]
+)
 # Incluir routers que YA ESTÁN IMPLEMENTADOS
 api_router.include_router(
     auth.router,
@@ -42,43 +50,13 @@ api_router.include_router(
     dependencies=[Depends(get_current_user)]
 )
 
-# TODO: Descomentar cuando implementes estos módulos
-"""
+# AGREGAR EL ROUTER DE ALARMAS
 api_router.include_router(
     alarms.router,
-    prefix="/alarms",
+    prefix="",  # Sin prefix porque ya incluye /treatments/{id}/alarms en las rutas
     tags=["alarms"],
     dependencies=[Depends(get_current_user)]
 )
-
-api_router.include_router(
-    alerts.router,
-    prefix="/alerts",
-    tags=["alerts"],
-    dependencies=[Depends(get_current_user)]
-)
-
-api_router.include_router(
-    monitoring.router,
-    prefix="/monitoring",
-    tags=["monitoring"],
-    dependencies=[Depends(get_current_user)]
-)
-
-api_router.include_router(
-    reports.router,
-    prefix="/reports",
-    tags=["reports"],
-    dependencies=[Depends(get_current_user)]
-)
-
-api_router.include_router(
-    settings.router,
-    prefix="/settings",
-    tags=["settings"],
-    dependencies=[Depends(get_current_user)]
-)
-"""
 
 # Endpoints adicionales de la API
 @api_router.get("/health")
@@ -107,10 +85,10 @@ async def api_info(current_user: User = Depends(get_current_user)):
                 "/auth",
                 "/patients",
                 "/medications",
-                "/treatments"
+                "/treatments",
+                "/treatments/{id}/alarms"  # AGREGAR ESTA LÍNEA
             ],
             "coming_soon": [
-                "/alarms",
                 "/alerts",
                 "/monitoring",
                 "/reports",
@@ -118,3 +96,4 @@ async def api_info(current_user: User = Depends(get_current_user)):
             ]
         }
     }
+
