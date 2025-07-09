@@ -458,3 +458,60 @@ async def get_compliance_analytics(
     )
 
     return analytics
+
+
+# AGREGAR este endpoint a tu archivo de endpoints de tratamientos:
+
+@router.delete("/{treatment_id}/alarms/{alarm_id}")
+async def delete_treatment_alarm(
+        treatment_id: int,
+        alarm_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+        _: bool = Depends(verify_treatment_access)
+):
+    """
+    Eliminar alarma específica del tratamiento
+    """
+    treatment_service = TreatmentService(db)
+
+    try:
+        success = treatment_service.delete_alarm(treatment_id, alarm_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Alarma {alarm_id} no encontrada para el tratamiento {treatment_id}"
+            )
+
+        return {
+            "message": "Alarma eliminada exitosamente",
+            "alarm_id": alarm_id,
+            "treatment_id": treatment_id
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error eliminando alarma: {str(e)}"
+        )
+
+
+# TAMBIÉN AGREGAR este endpoint de debugging (opcional):
+@router.get("/{treatment_id}/alarms/debug")
+async def debug_treatment_alarms(
+        treatment_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+        _: bool = Depends(verify_treatment_access)
+):
+    """
+    Endpoint de debugging para verificar el estado de las alarmas
+    """
+    treatment_service = TreatmentService(db)
+    debug_info = treatment_service.debug_treatment_alarms(treatment_id)
+    return debug_info

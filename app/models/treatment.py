@@ -48,6 +48,7 @@ class Treatment(Base):
     # Metadatos
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    alarms = relationship("Alarm", back_populates="treatment", cascade="all, delete-orphan")
 
     # Relaciones
     patient = relationship("Patient", back_populates="treatments")
