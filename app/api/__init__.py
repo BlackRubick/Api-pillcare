@@ -4,6 +4,7 @@ Router principal de la API
 from fastapi import APIRouter, Depends
 from app.core.dependencies import get_current_user
 from app.models.user import User
+from . import dashboard
 
 # Importar todos los routers
 from . import auth, patients, medications, treatments
@@ -96,4 +97,11 @@ async def api_info(current_user: User = Depends(get_current_user)):
             ]
         }
     }
+
+api_router.include_router(
+    dashboard.router,
+    prefix="/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(get_current_user)]
+)
 
