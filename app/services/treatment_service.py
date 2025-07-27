@@ -1,6 +1,3 @@
-    """
-    Servicio de gestión de tratamientos - VERSIÓN COMPLETA
-    """
     from sqlalchemy.orm import Session
     from typing import List, Optional, Dict, Any
     from datetime import date, datetime, timedelta
