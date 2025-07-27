@@ -1,5 +1,6 @@
+# app/api/__init__.py
 """
-Router principal de la API
+Router principal de la API - ACTUALIZADO con reportes
 """
 from fastapi import APIRouter, Depends
 from app.core.dependencies import get_current_user
@@ -7,22 +8,11 @@ from app.models.user import User
 from . import dashboard
 
 # Importar todos los routers
-from . import auth, patients, medications, treatments
-# Crear el archivo alarms.py con el código que te proporcioné
-from . import alarms  # AGREGAR ESTA LÍNEA
+from . import auth, patients, medications, treatments, alarms, reports  # AGREGAR reports
 
 # Router principal de la API
 api_router = APIRouter()
 
-from . import auth, patients, medications, treatments, alarms
-
-# Agregar después de los otros routers:
-api_router.include_router(
-    alarms.router,
-    prefix="",
-    tags=["alarms"],
-    dependencies=[Depends(get_current_user)]
-)
 # Incluir routers que YA ESTÁN IMPLEMENTADOS
 api_router.include_router(
     auth.router,
@@ -51,11 +41,26 @@ api_router.include_router(
     dependencies=[Depends(get_current_user)]
 )
 
-# AGREGAR EL ROUTER DE ALARMAS
+# ROUTER DE ALARMAS
 api_router.include_router(
     alarms.router,
-    prefix="",  # Sin prefix porque ya incluye /treatments/{id}/alarms en las rutas
+    prefix="",  
     tags=["alarms"],
+    dependencies=[Depends(get_current_user)]
+)
+
+# NUEVO: ROUTER DE REPORTES
+api_router.include_router(
+    reports.router,
+    prefix="/reports",
+    tags=["reports"],
+    dependencies=[Depends(get_current_user)]
+)
+
+api_router.include_router(
+    dashboard.router,
+    prefix="/dashboard",
+    tags=["dashboard"],
     dependencies=[Depends(get_current_user)]
 )
 
@@ -87,21 +92,14 @@ async def api_info(current_user: User = Depends(get_current_user)):
                 "/patients",
                 "/medications",
                 "/treatments",
-                "/treatments/{id}/alarms"  # AGREGAR ESTA LÍNEA
+                "/treatments/{id}/alarms",
+                "/reports",  
+                "/dashboard"
             ],
             "coming_soon": [
                 "/alerts",
                 "/monitoring",
-                "/reports",
                 "/settings"
             ]
         }
     }
-
-api_router.include_router(
-    dashboard.router,
-    prefix="/dashboard",
-    tags=["dashboard"],
-    dependencies=[Depends(get_current_user)]
-)
-

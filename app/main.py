@@ -126,8 +126,8 @@ def setup_middlewares(app: FastAPI):
             "http://localhost:4173",
             "http://127.0.0.1:4173",
             # Producción - IP específica
-            "http://18.234.171.119",
-            "https://18.234.171.119",
+            "http://18.209.162.34",
+            "https://18.209.162.34",
             "http://34.195.77.140",
             "https://34.195.77.140",
             "*"
